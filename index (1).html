@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>車站 — 陳柏瑋</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1c1c1c;
+    --ink-light: #555;
+    --ink-faint: #999;
+    --paper: #f7f5f0;
+    --paper-warm: #efe9de;
+    --accent: #4a6741;
+    --rule: #d5cfc4;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--ink);
+    font-family: 'Noto Serif TC', serif;
+    -webkit-font-smoothing: antialiased;
+    touch-action: pan-y;
+  }
+
+  /* ── 進度條 ── */
+  #progress-bar {
+    position: fixed;
+    top: 0; left: 0;
+    height: 2px;
+    background: var(--accent);
+    z-index: 200;
+    transition: width 0.3s ease;
+    pointer-events: none;
+  }
+
+  /* ── 頁碼 ── */
+  #page-indicator {
+    position: fixed;
+    bottom: 1.2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+    z-index: 200;
+    pointer-events: none;
+  }
+  .dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    transition: background 0.3s;
+  }
+  .dot.active { background: var(--accent); }
+
+  /* ── 滑動容器 ── */
+  #slider {
+    display: flex;
+    height: 100dvh;
+    width: 100%;
+    transition: transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    will-change: transform;
+  }
+
+  /* ── 每一頁 ── */
+  .page {
+    min-width: 100vw;
+    height: 100dvh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+
+  /* ── 封面頁 ── */
+  .page-cover {
+    background: var(--ink);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 3rem 2rem;
+    position: relative;
+  }
+  .page-cover::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(255,255,255,0.025) 39px, rgba(255,255,255,0.025) 40px);
+    pointer-events: none;
+  }
+  .cover-eyebrow {
+    font-size: 0.65rem;
+    letter-spacing: 0.35em;
+    color: var(--accent);
+    margin-bottom: 2rem;
+    font-weight: 400;
+  }
+  .cover-title {
+    font-size: clamp(3.5rem, 15vw, 7rem);
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    color: var(--paper);
+    line-height: 1;
+    margin-bottom: 1.5rem;
+  }
+  .cover-sub {
+    font-size: 0.9rem;
+    font-weight: 300;
+    color: rgba(247,245,240,0.45);
+    letter-spacing: 0.1em;
+    margin-bottom: 3rem;
+  }
+  .cover-author {
+    font-size: 0.8rem;
+    font-weight: 300;
+    color: rgba(247,245,240,0.3);
+    letter-spacing: 0.2em;
+    margin-bottom: 4rem;
+  }
+  .cover-hint {
+    position: absolute;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(247,245,240,0.25);
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .swipe-arrow {
+    font-size: 1.2rem;
+    animation: nudge 2s ease-in-out infinite;
+  }
+  @keyframes nudge {
+    0%,100%{transform:translateX(0)} 50%{transform:translateX(8px)}
+  }
+
+  /* ── 目錄頁 ── */
+  .page-toc {
+    background: var(--paper-warm);
+    padding: 3rem 1.8rem 5rem;
+  }
+  .toc-label {
+    font-size: 0.65rem;
+    letter-spacing: 0.35em;
+    color: var(--ink-faint);
+    margin-bottom: 2rem;
+    text-transform: uppercase;
+  }
+  .toc-phase {
+    margin-bottom: 1.8rem;
+  }
+  .toc-phase-title {
+    font-size: 0.7rem;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    margin-bottom: 0.6rem;
+    font-weight: 500;
+    line-height: 1.6;
+  }
+  .toc-item {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    padding: 0.2rem 0;
+    color: var(--ink-light);
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+  .toc-item:hover, .toc-item:active { color: var(--ink); }
+  .toc-dot {
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--rule);
+    flex-shrink: 0;
+    position: relative;
+    top: -2px;
+  }
+
+  /* ── Phase 分隔頁 ── */
+  .page-phase {
+    background: var(--ink);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 3rem 2.5rem;
+  }
+  .phase-tag {
+    display: inline-block;
+    font-size: 0.65rem;
+    letter-spacing: 0.35em;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 0.3rem 0.9rem;
+    margin-bottom: 1.2rem;
+  }
+  .phase-range {
+    font-size: 0.72rem;
+    color: rgba(247,245,240,0.35);
+    letter-spacing: 0.12em;
+    margin-bottom: 0.8rem;
+  }
+  .phase-quote {
+    font-size: 1rem;
+    color: rgba(247,245,240,0.6);
+    font-weight: 300;
+    font-style: italic;
+    line-height: 1.8;
+  }
+
+  /* ── 章節頁 ── */
+  .page-chapter {
+    background: var(--paper);
+    padding: 3.5rem 1.8rem 5rem;
+  }
+  .chapter-num {
+    font-size: 0.65rem;
+    letter-spacing: 0.3em;
+    color: var(--ink-faint);
+    margin-bottom: 0.4rem;
+  }
+  .chapter-title {
+    font-size: 1.35rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.3rem;
+    line-height: 1.4;
+    color: var(--ink);
+  }
+  .chapter-day {
+    font-size: 0.7rem;
+    color: var(--ink-faint);
+    letter-spacing: 0.15em;
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--rule);
+  }
+  .page-chapter p {
+    font-size: 1rem;
+    line-height: 2;
+    color: var(--ink);
+    font-weight: 300;
+    margin-bottom: 1em;
+    text-align: justify;
+  }
+  .page-chapter p + p { text-indent: 2em; }
+  .letter {
+    margin: 1.5rem 0;
+    padding: 1.2rem 1.5rem;
+    border-left: 2px solid var(--accent);
+    background: var(--paper-warm);
+    font-size: 0.92rem;
+    line-height: 2;
+    font-weight: 300;
+    color: var(--ink-light);
+    text-indent: 0 !important;
+  }
+
+  /* ── 結尾頁 ── */
+  .page-ending {
+    background: var(--ink);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 3rem 2rem;
+  }
+  .ending-rule {
+    width: 30px; height: 1px;
+    background: rgba(255,255,255,0.15);
+    margin-bottom: 1.5rem;
+  }
+  .ending-text {
+    font-size: 0.85rem;
+    letter-spacing: 0.2em;
+    color: rgba(247,245,240,0.35);
+    margin-bottom: 3rem;
+  }
+  .restart-btn {
+    font-size: 0.72rem;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 0.6rem 1.5rem;
+    cursor: pointer;
+    background: none;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+  .restart-btn:hover { background: var(--accent); color: var(--paper); }
+
+  /* ── 左右導覽按鈕（桌機用） ── */
+  .nav-btn {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 150;
+    background: rgba(28,28,28,0.5);
+    border: none;
+    color: rgba(255,255,255,0.4);
+    font-size: 1.4rem;
+    width: 2.5rem;
+    height: 4rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .nav-btn:hover { background: rgba(28,28,28,0.8); color: rgba(255,255,255,0.8); }
+  #btn-prev { left: 0; border-radius: 0 4px 4px 0; }
+  #btn-next { right: 0; border-radius: 4px 0 0 4px; }
+  .nav-btn.hidden { opacity: 0; pointer-events: none; }
+
+  @media (max-width: 600px) {
+    .nav-btn { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="progress-bar"></div>
+<div id="page-indicator"></div>
+<button class="nav-btn hidden" id="btn-prev" onclick="goTo(currentPage-1)">‹</button>
+<button class="nav-btn" id="btn-next" onclick="goTo(currentPage+1)">›</button>
+
+<div id="slider">
+
+  <!-- 0: 封面 -->
+  <div class="page page-cover">
+    <p class="cover-eyebrow">Day 001 — 730</p>
+    <h1 class="cover-title">車　站</h1>
+    <p class="cover-sub">一個人，兩年，不知道何時下車</p>
+    <p class="cover-author">陳柏瑋　著</p>
+    <div class="cover-hint">
+      <span>向右滑動開始閱讀</span>
+      <span class="swipe-arrow">→</span>
+    </div>
+  </div>
+
+  <!-- 1: 目錄 -->
+  <div class="page page-toc">
+    <p class="toc-label">目　錄</p>
+    <div class="toc-phase">
+      <p class="toc-phase-title">PHASE 01　Day 001–060<br>還不知道自己在找什麼</p>
+      <div class="toc-item" onclick="goTo(3)"><span class="toc-dot"></span>一、最後一次打卡</div>
+      <div class="toc-item" onclick="goTo(4)"><span class="toc-dot"></span>二、第一次隨機</div>
+      <div class="toc-item" onclick="goTo(5)"><span class="toc-dot"></span>三、一個人吃飯</div>
+    </div>
+    <div class="toc-phase">
+      <p class="toc-phase-title">PHASE 02　Day 061–180<br>開始習慣漂泊，但不知道為何而走</p>
+      <div class="toc-item" onclick="goTo(7)"><span class="toc-dot"></span>四、老陳的廢棄小學</div>
+      <div class="toc-item" onclick="goTo(8)"><span class="toc-dot"></span>五、阿偉</div>
+      <div class="toc-item" onclick="goTo(9)"><span class="toc-dot"></span>六、颱風夜</div>
+      <div class="toc-item" onclick="goTo(10)"><span class="toc-dot"></span>七、回到漁港</div>
+    </div>
+    <div class="toc-phase">
+      <p class="toc-phase-title">PHASE 03　Day 181–400<br>開始主動選擇，而不是被生活推著走</p>
+      <div class="toc-item" onclick="goTo(12)"><span class="toc-dot"></span>八、第一次不是隨機</div>
+      <div class="toc-item" onclick="goTo(13)"><span class="toc-dot"></span>九、親人的街道</div>
+      <div class="toc-item" onclick="goTo(14)"><span class="toc-dot"></span>十、阿偉不見了</div>
+      <div class="toc-item" onclick="goTo(15)"><span class="toc-dot"></span>十一、想留下來</div>
+      <div class="toc-item" onclick="goTo(16)"><span class="toc-dot"></span>十二、再見阿偉</div>
+    </div>
+    <div class="toc-phase">
+      <p class="toc-phase-title">PHASE 04　Day 401–730<br>終於知道自己在做什麼</p>
+      <div class="toc-item" onclick="goTo(18)"><span class="toc-dot"></span>十三、回到那間咖啡館</div>
+      <div class="toc-item" onclick="goTo(19)"><span class="toc-dot"></span>十四、老陳的信</div>
+      <div class="toc-item" onclick="goTo(20)"><span class="toc-dot"></span>十五、寫給媽</div>
+      <div class="toc-item" onclick="goTo(21)"><span class="toc-dot"></span>十六、最後一次下車</div>
+    </div>
+  </div>
+
+  <!-- 2: Phase 01 分隔 -->
+  <div class="page page-phase">
+    <div class="phase-tag">PHASE 01</div>
+    <p class="phase-range">Day 001 – 060</p>
+    <p class="phase-quote">還不知道自己在找什麼</p>
+  </div>
+
+  <!-- 3: 一 -->
+  <div class="page page-chapter">
+    <p class="chapter-num">一</p>
+    <h2 class="chapter-title">最後一次打卡</h2>
+    <p class="chapter-day">辭職那天</p>
+    <p>辭職那天，小強沒有跟任何人道別。</p>
+    <p>他把識別證放在桌上，輕輕擱在鍵盤旁邊，像是一件隨手放著、隨時可以再拿走的東西。但他知道自己不會再拿走了。他背起包，走過辦公室，有兩個同事抬起頭來看他，他對他們點了個頭，他們也點了回去，然後繼續看他們的螢幕。</p>
+    <p>這很正常。他本來就是那種不太有存在感的人。</p>
+    <p>電梯門關上的時候，他對著自己在金屬門面上的模糊倒影看了三秒鐘。那個人看起來還好，沒有什麼特別的表情。他想起媽走的那天早上，他也是這樣站在鏡子前面，對著自己看了很久，不知道接下來該做什麼表情。</p>
+    <p>車站很吵。他在售票機前面站了一會兒，不是在考慮去哪裡，而是在確認自己真的要這麼做。他帳戶裡有一筆錢，不多不少，是這幾年生活之外剩下來的——不是為了什麼目標存的，只是因為不知道要花在哪裡。媽走的時候也留下了一些，他放著沒動，覺得動了就像是在對某件事畫下句點。</p>
+    <p>他買了一張兩年的火車通票。</p>
+    <p>售票員是個年輕女生，她看了看螢幕，沒有多問什麼，只說：「兩年效期，從今天開始算喔，祝旅途愉快。」</p>
+    <p>他說謝謝，把票收進口袋，走向月台。不知道要去哪裡這件事，比他想像中更讓他難受。</p>
+  </div>
+
+  <!-- 4: 二 -->
+  <div class="page page-chapter">
+    <p class="chapter-num">二</p>
+    <h2 class="chapter-title">第一次隨機</h2>
+    <p class="chapter-day">Day 003</p>
+    <p>他坐上火車，閉上眼睛，在心裡數到三，睜眼，往窗外看。</p>
+    <p>那站叫什麼名字他記不清了，只記得站牌字體有點舊，月台上有個阿伯在睡覺，旁邊放著一個大型保麗龍箱。他拎起背包，就下去了。</p>
+    <p>那是一個漁港小鎮。霧很重，聞得到海腥味和某個地方傳來的炒飯油煙。他在港邊站了將近一個小時，不知道該往哪走。偶爾有漁船進港，有人在卸貨，說的是他一個字都聽不懂的方言。他就那樣站著，像個遺落在這裡的東西。</p>
+    <p>他肚子餓了，但不知道該去哪裡吃，也不太想移動。就在這時候，一個老女人從旁邊走過，她看了他一眼，停下來，用手比了個「坐」的動作，然後轉身往她的攤位走去。</p>
+    <p>他不知道為什麼就跟過去了。可能是因為肚子餓，也可能是因為那個動作太理所當然，理所當然到他不知道怎麼拒絕。</p>
+    <p>她七十幾歲，圍裙上有些洗不掉的醬油漬，頭髮微白，綁成一個小髻。她端出一碗稀飯，配了小魚乾和幾根醃漬小黃瓜。他吃完了。她又去盛了一碗，他也吃完了。她沒有說話，他也沒有說話。</p>
+    <p>然後她從圍裙口袋裡拿出一個橘子，放在碗旁邊，就走開了。</p>
+    <p>他盯著那個橘子看了很久。</p>
+    <p>他不知道為什麼眼眶突然有點熱——不是感動，不是那種。是因為他突然想起，媽以前也這樣，飯後總要塞給他一個水果，也不說話，只是放在旁邊，好像那是理所當然的事。</p>
+    <p>他把橘子放進口袋，沒有剝。走了很遠之後，才停下來，在路邊把它吃掉。</p>
+    <p>她從來沒問過他「你一個人嗎」、「要去哪」，也沒問「家人呢」。</p>
+    <p>他後來想，那是他這幾年來第一次，坐在一個地方，不需要解釋自己存在的原因。</p>
+  </div>
+
+  <!-- 5: 三 -->
+  <div class="page page-chapter">
+    <p class="chapter-num">三</p>
+    <h2 class="chapter-title">一個人吃飯</h2>
+    <p class="chapter-day">Day 010 – 060</p>
+    <p>他花了兩個月，學會一個人走進餐廳。不是字面意義上的學——他當然知道怎麼推開門、找到位置、拿菜單。但以前他進餐廳，桌上一定有人，哪怕只是看著彼此滑手機。現在桌上沒有人，他突然不知道眼睛應該看哪裡。</p>
+    <p>他試過把手機拿出來假裝在看什麼。他試過盯著菜單看很久。他試過從包包拿出一本他根本沒在看的書。</p>
+    <p>大概到了第三週，他才開始覺得，一個人坐著等菜是一件不需要任何理由的事。</p>
+    <p>備忘錄裡有一份清單，四十幾件事，都是他存進去準備「以後要做的」。他看了半天，發現其中有三十幾件，他根本不確定是不是自己想做的——更像是別人說值得做的，或者電影裡的角色會做的事。他把那些留著沒刪，但在旁邊備注了一個問號。</p>
+    <p>他不知道這算不算一種改變。他只是覺得，那些問號放在那裡比較誠實。</p>
+  </div>
+
+  <!-- 6: Phase 02 分隔 -->
+  <div class="page page-phase">
+    <div class="phase-tag">PHASE 02</div>
+    <p class="phase-range">Day 061 – 180</p>
+    <p class="phase-quote">開始習慣漂泊，但不知道為何而走</p>
+  </div>
+
+  <!-- 7: 四 -->
+  <div class="page page-chapter">
+    <p class="chapter-num">四</p>
+    <h2 class="chapter-title">老陳的廢棄小學</h2>
+    <p class="chapter-day">Day 070</p>
+    <p>他隨機下了個車站，往外走，是一個看起來曾經熱鬧過的小城——街道寬，但店面空著的比開著的多，牆上有舊廣告的痕跡，像是什麼東西繁盛過又退潮了，留下這些殼。他走著走著，走進一棟門口掛了燈的老校舍，旁邊釘了一塊木牌，用奇異筆寫著「有空房」。</p>
+    <p>他進去，一個五十幾歲的男人從廚房走出來，圍裙上沾著麵粉，看了他一眼，說：「住宿嗎？一個人？」他說是。</p>
+    <p>那個男人叫老陳。他給小強一個舊教室改的房間，裡面有一張單人床、一張學生桌、一盞舊檯燈。牆上有幾個舊釘子，不知道以前釘過什麼，現在空著。</p>
+    <p>老陳話不多，但飯做得好吃。晚餐是炒高麗菜和一碗湯，簡單，但每樣東西都有它的味道。吃飯時只有他們兩個人，老陳偶爾說幾句，不試圖聊什麼深刻的事，只說「今天天氣不錯」或「明天好像會下雨」。</p>
+    <p>小強在那裡待了六天。</p>
+    <p>第五天晚上，老陳在廚房忙完出來，在他對面坐下，倒了兩杯茶，沒有說話。沉默了一會兒，他才開口，問的不像問題，比較像是自言自語：「你這樣一直走，有沒有哪個地方讓你不想走了？」</p>
+    <p>小強想了很久，說沒有。</p>
+    <p>老陳點頭，喝了口茶，說：「我以前也是。後來發現，不是要找一個地方留下來，是要找到一件事——有那件事在，哪裡都可以是家。」他說完看了看爐子的方向，站起來，說：「你那個茶喝完再走，放著可惜。」</p>
+    <p>他沒有說這是一個重要的建議，說完就回去廚房了。</p>
+  </div>
+
+  <!-- 8: 五 -->
+  <div class="page page-chapter">
+    <p class="chapter-num">五</p>
+    <h2 class="chapter-title">阿偉</h2>
+    <p class="chapter-day">Day 080</p>
+    <p>阿偉是在一個山城小鎮的早餐店遇見的。</p>
+    <p>他坐在小強旁邊，自來熟地把包包放在椅子上，然後問：「你從哪裡來？」</p>
+    <p>小強說台北。</p>
+    <p>阿偉說：「不是，我是說你從哪裡搭車過來的。」</p>
+    <p>小強想了一下，說了前一站的站名。阿偉點頭，說：「我也是。」然後低頭去看菜單。</p>
+    <p>他二十八歲，背包比他的人生規劃還要大。他已經把台灣繞了兩圈半，講話很快，很會說笑，很容易讓人覺得他過得很好。</p>
+    <p>第一天，阿偉帶他去一家沒有招牌的小吃店，說這是他第三次來這個鎮，每次都來這裡。他跟老闆娘說說笑笑，好像老朋友，走的時候老闆娘還叫他下次早點來。小強在旁邊看著，覺得這個人有種他沒有的能力——走到哪裡都可以讓自己像是本來就在那裡的人。</p>
+    <p>第二天，阿偉問他為什麼出來走。他說家裡的人走了。阿偉沒有說對不起，只是嗯了一聲，說：「所以你是要找什麼，還是要忘什麼？」</p>
+    <p>小強說不知道。</p>
+    <p>阿偉說：「那也好，至少你還在找。」然後繼續吃飯，沒有繼續追問。</p>
+    <p>第三天晚上，喝了點酒之後，阿偉說了一些他平時不說的話。他說他不是沒有地方可以回去，他有家，家裡有人等他，只是他不想回去面對某些事。他說「不停移動」讓他不需要思考那些事情。</p>
+    <p>他說完就笑了，好像在開自己玩笑。</p>
+    <p>小強沒有說什麼。但他想起了自己備忘錄裡那些問號，想起他這幾個月一直在搭的火車，想起他告訴自己這是「旅行」，而不是別的什麼。</p>
+    <p>有幾天，他開始有點不想跟阿偉碰面。他跟自己說，是因為阿偉太吵，太愛說話，和他不同調。但有天晚上他在旅館盯著天花板，忽然想到阿偉說的那句話——「不停移動讓我不需要思考那些事」——然後他意識到，他不願意再見到阿偉，不是因為阿偉說了什麼讓他不舒服，是因為阿偉說了一件他正在做的事，說得太準，準到他不想再對到那張臉。</p>
+  </div>
+
+  <!-- 9: 六 -->
+  <div class="page page-chapter">
+    <p class="chapter-num">六</p>
+    <h2 class="chapter-title">颱風夜</h2>
+    <p class="chapter-day">Day 130</p>
+    <p>颱風來的時候，他被困在一個小鎮裡，整整兩天哪裡都去不了。</p>
+    <p>第一天，他很煩躁。他說不清楚在煩什麼，後來他想，大概是因為沒有移動，就只剩下待著，待著就只剩下想，他不太習慣那麼大量地想。</p>
+    <p>旅館的窗戶一直在響，風夾著雨斜著打過來，路上沒有人。他坐在床上，把手機裡的備忘錄全部翻出來，一件一件重新看。那些打了問號的事，他刪了。刪完之後，清單上剩下二十一件事。他又看了一遍，再刪了幾件，最後剩下十七件。他不知道這些是不是真的他想做的，但至少他不確定它們是別人幫他想的。</p>
+    <p>第二天颱風還沒走，他躺在床上，聽著窗外風雨的聲音，發現自己不焦慮。他以為被困在一個地方會讓他抓狂——沒有移動、沒有下一站——但他沒有。他想，如果媽在，她大概會說「待著有什麼不好，到處跑才奇怪」。他不確定她說的對不對，但他覺得那兩天是他這幾個月睡得最好的兩天。也許移動讓他覺得自己在做什麼，但靜下來才讓他發現，他也可以什麼都不做。</p>
+  </div>
+
+  <!-- 10: 七 -->
+  <div class="page page-chapter">
+    <p class="chapter-num">七</p>
+    <h2 class="chapter-title">回到漁港</h2>
+    <p class="chapter-day">Day 160</p>
+    <p>他搭車回到第一次下車的漁港小鎮。</p>
+    <p>阿姨還在，攤位還在，稀飯還是一樣的味道。她看見他走過來，沒有說「你回來啦」，也沒有表現出驚訝，只是比了個「坐」的動作，然後進去盛了一碗出來。</p>
+    <p>他吃的時候，阿姨在旁邊整理東西，偶爾看他一眼，偶爾不看。港邊有幾隻鳥在叫，風帶著鹹味。</p>
+    <p>吃完之後，她照例沒有說話。她從圍裙口袋裡摸了摸，這次沒有橘子，拿出來的是一顆糖，那種透明包裝紙裡的老式水果糖。她放在他面前桌上，轉身去招呼別的客人。</p>
+    <p>他盯著那顆糖，忽然想起媽以前包包裡永遠有糖，說備著給他吃，但其實她自己吃的比較多。他不記得她最後一次給他糖是什麼時候了。</p>
+    <p>那天晚上，他一個人在海邊坐著，想起了媽。不是刻意去想，是那種突然浮上來的——某個畫面，某個氣味，某個他以為自己已經不常想起的細節。</p>
+    <p>他哭了一會兒。沒有人看見。</p>
+    <p>哭完了，他坐著繼續看海，發現心裡有一塊地方好像鬆了一點。不是變好了，是鬆了，像是壓著的東西稍微移開了一些，透進來一點空氣。</p>
+    <p>他不確定那算不算是某種和解。他只知道，那是他這幾個月第一次真的哭出來。</p>
+  </div>
+
+  <!-- 11: Phase 03 分隔 -->
+  <div class="page page-phase">
+    <div class="phase-tag">PHASE 03</div>
+    <p class="phase-range">Day 181 – 400</p>
+    <p class="phase-quote">開始主動選擇，而不是被生活推著走</p>
+  </div>
+
+  <!-- 12: 八 -->
+  <div class="page page-chapter">
+    <p class="chapter-num">八</p>
+    <h2 class="chapter-title">第一次不是隨機</h2>
+    <p class="chapter-day">Day 185</p>
+    <p>他在售票機前面站著，手指懸在螢幕上方，準備要閉上眼睛。</p>
+    <p>然後他沒有閉上眼睛。</p>
+    <p>他輸入了一個地名——阿姨那個漁港小鎮附近的山，他在那裡待的那幾天，偶爾看見遠處有一片山脊線，他一直想過去看看。</p>
+    <p>他買了票，走向月台，忽然意識到這是他買通票以來第一次主動選擇目的地。</p>
+    <p>他不確定這是一件大事還是小事。但他覺得有點不一樣。</p>
+  </div>
+
+  <!-- 13: 九 -->
+  <div class="page page-chapter">
+    <p class="chapter-num">九</p>
+    <h2 class="chapter-title">親人的街道</h2>
+    <p class="chapter-day">Day 230</p>
+    <p>他去了媽以前住的老家附近。</p>
+    <p>不是計畫好的。他下車之後走著走著，發現自己走進了一條他記得的巷子——不確定為什麼記得，只是巷口有一棵樹，樹幹的彎曲方式有點特別。</p>
+    <p>他在巷口站了很久。那棟房子已經賣掉了，現在住著別人，窗台上有幾盆植物，是新的，不是他記憶裡的那些。</p>
+    <p>他沒有走進去，只是站在那裡。</p>
+    <p>然後他開口說話，聲音很小，幾乎聽不見：「我不知道怎麼懷念你。但我也不想假裝你不存在。」</p>
+    <p>說完之後，他往前走了。巷子到底有一家麵攤，他坐下來吃了一碗麵，吃得很慢，因為他不想那麼快離開那條巷子。</p>
+  </div>
+
+  <!-- 14: 十 -->
+  <div class="page page-chapter">
+    <p class="chapter-num">十</p>
+    <h2 class="chapter-title">阿偉不見了</h2>
+    <p class="chapter-day">Day 250</p>
+    <p>他在某個城市等阿偉，但阿偉沒有出現。</p>
+    <p>他發了訊息，等了兩天，才收到回覆：「我回家了。」</p>
+    <p>沒有解釋。</p>
+    <p>他在那個城市又多待了三天，一個人在幾條街道之間走來走去。他想，阿偉回家是一件好事，還是壞事？然後他意識到他不知道阿偉的家是什麼樣子，也不知道他家裡有什麼人，也不知道他到底在逃什麼。他們相處了好幾次，但他對阿偉的了解，大概就只有他說過的那些話。</p>
+    <p>他想，自己大概也是這樣的——別人認識他，認識的可能也只有他說過的那些話。</p>
+  </div>
+
+  <!-- 15: 十一 -->
+  <div class="page page-chapter">
+    <p class="chapter-num">十一</p>
+    <h2 class="chapter-title">想留下來</h2>
+    <p class="chapter-day">Day 310</p>
+    <p>在一個山邊的小鎮，他路過一間咖啡館，看見窗口貼著一張手寫的紙：「工讀生，有興趣歡迎進來談。」</p>
+    <p>他在門口站了很長時間。</p>
+    <p>咖啡館的光線很好，裡面只有三張桌子，有一個人在看書。吧台後面的人正在磨豆，動作很慢，不緊不慢的那種慢。</p>
+    <p>他最後沒有進去。</p>
+    <p>走遠了之後，他回頭看了一眼那扇窗。燈還亮著，磨豆的人還在。他在手機備忘錄裡打下那個地址，停了一下，又在後面加了一個字：「之後」。</p>
+    <p>他自己也不確定之後是什麼意思。</p>
+  </div>
+
+  <!-- 16: 十二 -->
+  <div class="page page-chapter">
+    <p class="chapter-num">十二</p>
+    <h2 class="chapter-title">再見阿偉</h2>
+    <p class="chapter-day">Day 375</p>
+    <p>阿偉在一個城市的咖啡館裡出現了。</p>
+    <p>他剪了頭髮，臉色好很多，背包換成了一個小的。他說他回家住了一段時間，跟家人吵了一架，然後和好了。他說他現在打算先找個工作，存一點錢，之後再看。</p>
+    <p>小強問：「那旅行呢？」</p>
+    <p>阿偉說：「我不知道。可能還會走，但不會像以前那樣走。」他停了一下，說：「以前我走是因為不想停，現在如果再走，是因為我想走。」</p>
+    <p>他們坐著喝了一個下午的咖啡，說了很多話，也有很多時候沒有說話，就那樣坐著。</p>
+    <p>分開的時候，阿偉說：「下次見。」</p>
+    <p>這是他第一次說下次見。</p>
+  </div>
+
+  <!-- 17: Phase 04 分隔 -->
+  <div class="page page-phase">
+    <div class="phase-tag">PHASE 04</div>
+    <p class="phase-range">Day 401 – 730</p>
+    <p class="phase-quote">終於知道自己在做什麼</p>
+  </div>
+
+  <!-- 18: 十三 -->
+  <div class="page page-chapter">
+    <p class="chapter-num">十三</p>
+    <h2 class="chapter-title">回到那間咖啡館</h2>
+    <p class="chapter-day">Day 410</p>
+    <p>他回到那個山邊小鎮，走進那間咖啡館。</p>
+    <p>老闆是個三十幾歲的女人，她看了他一眼，說：「工讀生的位子已經補了。」</p>
+    <p>他說：「我知道。我只是來喝咖啡。」</p>
+    <p>她點頭，去幫他沖了一杯。他坐在靠窗的位置，窗外是山，天氣很好，遠處的山脊線清清楚楚。喝完咖啡，他問老闆：「有沒有附近哪裡可以短租的地方？住一週左右。」</p>
+    <p>她想了一下，說樓上有個空房間，她平時不租，但可以給他一週。</p>
+    <p>他住了下來。</p>
+    <p>那一週，他沒有再搭火車。他每天走路去咖啡館喝一杯咖啡，去旁邊的市場買菜，自己做飯，傍晚在山邊走走。他讀了三本書，把手機相簿整理了一遍，發現那兩千多張照片裡，他最喜歡的都是光線很普通、沒什麼特別的時刻——某個早晨攤位上的蒸氣、某條空著的月台、某片他說不出名字的海。</p>
+    <p>住了大概四天，有天早上他在樓梯口遇見她，她正端著一盆植物往窗邊移。他側身讓路，她走過去的時候停了一下，說：「這盆曬太陽才長得好，但一直曬它就不動了，要記得挪開。」</p>
+    <p>她說完就走了。</p>
+    <p>他站在樓梯口，看著她的背影，沒有說話。</p>
+  </div>
+
+  <!-- 19: 十四 -->
+  <div class="page page-chapter">
+    <p class="chapter-num">十四</p>
+    <h2 class="chapter-title">老陳的信</h2>
+    <p class="chapter-day">Day 450</p>
+    <p>老陳寄了一封實體信給他。</p>
+    <p>他用的是旅館的信紙，字跡不算好看，但寫得很工整。信很短，只有幾行：</p>
+    <div class="letter">你上次離開之後，我偶爾想起你說話的樣子。我說不清楚有什麼不同，但我覺得你說話的方式改變了。不是說話的內容，是方式。</div>
+    <p>他看了那幾行字很久。他不確定老陳說的是什麼，改變了哪裡。但他覺得那封信讓他很想哭，不是難過的那種，是另外一種——被看見的那種。</p>
+    <p>他回了一封信，謝謝老陳。他在信的最後說：「我覺得我快要知道自己在做什麼了。還沒確定，但快了。」</p>
+  </div>
+
+  <!-- 20: 十五 -->
+  <div class="page page-chapter">
+    <p class="chapter-num">十五</p>
+    <h2 class="chapter-title">寫給媽</h2>
+    <p class="chapter-day">Day 620</p>
+    <p>他坐在一個小鎮的公園長椅上，打開備忘錄，開始打字。</p>
+    <p>他寫給已經不在了的媽。</p>
+    <p>他沒有寫「我想你」，雖然他確實想，但那三個字好像不夠用，或者說，不只是那三個字。他寫的是：</p>
+    <div class="letter">我第一次去了你說過想去的那個海邊。你以前說那裡的落日是橘紅色的，不是橘黃色，你說差別很大。我去的那天剛好有雲，沒有看到落日。但我坐了很久，等雲散，雲沒有散，我就回去了。不知道你會不會喜歡，但我喜歡。下次再去的時候，我會看看那個落日是什麼顏色。</div>
+    <p>他寫完之後，把手機放下，抬頭看了一下天空。</p>
+    <p>天空是很普通的藍色，沒有什麼特別的。</p>
+    <p>他覺得還好。</p>
+  </div>
+
+  <!-- 21: 十六 -->
+  <div class="page page-chapter">
+    <p class="chapter-num">十六</p>
+    <h2 class="chapter-title">最後一次下車</h2>
+    <p class="chapter-day">Day 730</p>
+    <p>兩年的通票，今天到期。</p>
+    <p>他在最後一天搭上了一班他沒有搭過的車，往一個他沒有去過的方向。窗外的風景一格一格過去，他沒有閉眼，就這樣看著。後來他想，其實他不需要再用閉眼數到三這個方式了——那是他剛出發時用來讓自己「沒有目的地」的藉口，一種逃進隨機的方式。現在他知道，他也可以直接睜著眼睛，不知道接下來是什麼，也沒關係。</p>
+    <p>那個車站月台很小，樹下有張舊椅子，椅子上沒有人。</p>
+    <p>出口外面是一條普通的路，早餐店剛開門，飄出來豆漿的氣味。他走進去，在靠門的位置坐下，看了一下菜單，點了蛋餅和豆漿，然後把手機翻過來扣在桌上，看著窗外等餐。</p>
+    <p>沒有什麼特別的。他只是在這裡，這樣就好。</p>
+  </div>
+
+  <!-- 22: 結尾 -->
+  <div class="page page-ending">
+    <div class="ending-rule"></div>
+    <p class="ending-text">— 全書完 —</p>
+    <button class="restart-btn" onclick="goTo(0)">從頭再讀</button>
+  </div>
+
+</div><!-- /slider -->
+
+<script>
+  const slider = document.getElementById('slider');
+  const pages = document.querySelectorAll('.page');
+  const total = pages.length;
+  const progressBar = document.getElementById('progress-bar');
+  const indicator = document.getElementById('page-indicator');
+  const btnPrev = document.getElementById('btn-prev');
+  const btnNext = document.getElementById('btn-next');
+
+  let currentPage = 0;
+  let startX = 0, startY = 0;
+  let isDragging = false;
+  let startScrollTop = 0;
+
+  // 建立dots
+  pages.forEach((_, i) => {
+    const dot = document.createElement('div');
+    dot.className = 'dot';
+    indicator.appendChild(dot);
+  });
+  const dots = document.querySelectorAll('.dot');
+
+  function goTo(n) {
+    if (n < 0 || n >= total) return;
+    currentPage = n;
+    slider.style.transform = `translateX(-${currentPage * 100}vw)`;
+    progressBar.style.width = ((currentPage / (total - 1)) * 100) + '%';
+    dots.forEach((d, i) => d.classList.toggle('active', i === currentPage));
+    btnPrev.classList.toggle('hidden', currentPage === 0);
+    btnNext.classList.toggle('hidden', currentPage === total - 1);
+    // 每次換頁把該頁捲回頂端
+    pages[currentPage].scrollTop = 0;
+  }
+
+  // Touch 事件：區分「垂直捲動」和「水平滑動」
+  slider.addEventListener('touchstart', e => {
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    startScrollTop = pages[currentPage].scrollTop;
+    isDragging = true;
+  }, { passive: true });
+
+  slider.addEventListener('touchend', e => {
+    if (!isDragging) return;
+    isDragging = false;
+    const dx = e.changedTouches[0].clientX - startX;
+    const dy = e.changedTouches[0].clientY - startY;
+
+    // 只有水平移動大於垂直移動才換頁
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
+      if (dx < 0) goTo(currentPage + 1);
+      else goTo(currentPage - 1);
+    }
+  }, { passive: true });
+
+  // 鍵盤
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight') goTo(currentPage + 1);
+    if (e.key === 'ArrowLeft') goTo(currentPage - 1);
+  });
+
+  goTo(0);
+</script>
+</body>
+</html>
